@@ -1,0 +1,11 @@
+   63  pip install optimum[exporters]
+   64  optimum-cli export onnx --help
+   65  optimum-cli export onnx --model microsoft/trocr-base-printed model_onnx/
+   66  optimum-cli export onnx --model microsoft/trocr-small-printed model_onnx/
+   68  pip install optimum[onnxruntime]
+   69  optimum-cli export onnx -m microsoft/trocr-base-printed ocr_onnx
+   70  optimum-cli export onnx --help
+   71  optimum-cli export onnx -m microsoft/trocr-base-printed ocr_onnx --task image-to-text
+   72  optimum-cli export onnx -m microsoft/trocr-base-printed ocr_onnx --task image-to-text --monolith
+   73  optimum-cli export onnx --help
+   74  optimum-cli export onnx -m microsoft/trocr-base-printed ocr_onnx --task image-to-text --monolith --no-post-process
