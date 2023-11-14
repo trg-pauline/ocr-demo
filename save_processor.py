@@ -1,7 +1,6 @@
-from transformers import TrOCRProcessor
-import json
-
 print("Start saving")
+
+from transformers import TrOCRProcessor
 
 model_name = 'microsoft/trocr-base-printed'
 processor = TrOCRProcessor.from_pretrained(model_name)
