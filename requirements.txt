@@ -1,5 +1,5 @@
 boto3==1.42.83
-optimum==2.1.0
+optimum[exporters,onnxruntime]==2.1.0
 optimum-onnx==0.1.0
 pillow==12.2.0
 torch==2.11.0
