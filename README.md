@@ -10,10 +10,10 @@ Text recognition demo using TrOCR model deployed on Red Hat OpenShift AI (RHOAI)
 ## Setup
 
 ### 1. Create Project
-Project name: `workbench`
+Project name: `ocr-demo`
 
 ### 2. Configure Object Storage
-- **Bucket**: Create bucket named `workbench`
+- **Bucket**: Create bucket named `ocr-demo`
 - **Data Connection**:
   - Type: S3 compatible object storage
   - Name: `minio`
@@ -21,10 +21,10 @@ Project name: `workbench`
   - Secret key: `<your-secret-key>`
   - Endpoint: `https://<minio-route>`
   - Region: `None`
-  - Bucket: `workbench`
+  - Bucket: `ocr-demo`
 
 ### 3. Create Workbench
-- **Name**: `wb`
+- **Name**: `workbench`
 - **Image**: `Jupyter | Minimal | CPU | Python 3.12`
 - **Memory**: 8 GiB (request & limit)
 - **Connections**: Attach `minio`
@@ -34,12 +34,12 @@ Project name: `workbench`
 Run notebooks **0 through 4** in order. These will:
 - Download TrOCR model from Hugging Face
 - Convert to ONNX format
-- Upload to S3 with required structure (`ocr-demo/1/model.onnx`)
+- Upload to S3 with required structure (`models/1/model.onnx`)
 
 ### 5. Deploy Model
 - **Model name**: `onnx-model`
 - **Connection**: `minio`
-- **Path**: `ocr-demo`
+- **Path**: `models`
 - **Framework**: `onnx - 1`
 - **Runtime**: OpenVINO Model Server (auto-selected)
 - **External route**: ✅ Enabled
