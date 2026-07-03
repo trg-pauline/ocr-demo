@@ -1,0 +1,292 @@
+# PIPELINE DEFINITION
+# Name: ocr-pipeline
+# Description: Export TrOCR to ONNX, upload to S3, run inference
+# Inputs:
+#    s3_access_key: str [Default: 'minio']
+#    s3_bucket: str [Default: 'ocr-demo']
+#    s3_endpoint: str [Default: 'https://minio-s3-minio.apps.cluster-f44gq.f44gq.sandbox358.opentlc.com']
+#    s3_secret_key: str [Default: 'minio123']
+components:
+  comp-export-model-to-onnx:
+    executorLabel: exec-export-model-to-onnx
+    outputDefinitions:
+      artifacts:
+        model_output:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-run-inference-from-s3:
+    executorLabel: exec-run-inference-from-s3
+    inputDefinitions:
+      parameters:
+        s3_access_key:
+          parameterType: STRING
+        s3_bucket:
+          parameterType: STRING
+        s3_endpoint:
+          parameterType: STRING
+        s3_folder:
+          defaultValue: pipelines/ocr-model/
+          isOptional: true
+          parameterType: STRING
+        s3_secret_key:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-upload-to-s3:
+    executorLabel: exec-upload-to-s3
+    inputDefinitions:
+      artifacts:
+        model_input:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        s3_access_key:
+          parameterType: STRING
+        s3_bucket:
+          parameterType: STRING
+        s3_endpoint:
+          parameterType: STRING
+        s3_folder:
+          defaultValue: pipelines/ocr-model/
+          isOptional: true
+          parameterType: STRING
+        s3_secret_key:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-export-model-to-onnx:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - export_model_to_onnx
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location --index-url https://pypi.org/simple/\
+          \ --trusted-host https://pypi.org/simple/ 'optimum[exporters,onnxruntime]==2.1.0'\
+          \ 'transformers==4.57.6' 'torch==2.11.0'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location --index-url https://pypi.org/simple/ --trusted-host\
+          \ https://pypi.org/simple/ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef export_model_to_onnx(model_output: Output[Artifact]):\n    \"\
+          \"\"Download TrOCR from HuggingFace and export to ONNX.\"\"\"\n    import\
+          \ os\n    from optimum.exporters.onnx import main_export\n    from transformers\
+          \ import TrOCRProcessor\n\n    model_name = \"microsoft/trocr-base-printed\"\
+          \n    output_dir = model_output.path\n    os.makedirs(output_dir, exist_ok=True)\n\
+          \n    main_export(\n        model_name_or_path=model_name,\n        output=output_dir,\n\
+          \        task=\"image-to-text\",\n        monolith=True,\n    )\n\n    processor\
+          \ = TrOCRProcessor.from_pretrained(model_name)\n    processor.save_pretrained(output_dir)\n\
+          \n    print(f\"Model exported to {output_dir}\")\n    for f in os.listdir(output_dir):\n\
+          \        print(f\"  {f}\")\n\n"
+        image: registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:8712328f7c4aa611500daf3736a53405cac8a23a97721c37745a9fb9d8cf321d
+    exec-run-inference-from-s3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - run_inference_from_s3
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location --index-url https://pypi.org/simple/\
+          \ --trusted-host https://pypi.org/simple/ 'boto3==1.42.83' 'onnxruntime'\
+          \ 'transformers==4.57.6' 'pillow==12.2.0' 'numpy'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location --index-url https://pypi.org/simple/\
+          \ --trusted-host https://pypi.org/simple/ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef run_inference_from_s3(\n    s3_endpoint: str,\n    s3_bucket:\
+          \ str,\n    s3_access_key: str,\n    s3_secret_key: str,\n    s3_folder:\
+          \ str = \"pipelines/ocr-model/\",\n) -> str:\n    \"\"\"Download model from\
+          \ S3 and run OCR inference on a test image.\"\"\"\n    import os\n    import\
+          \ boto3\n    import botocore\n    import numpy as np\n    import onnxruntime\
+          \ as ort\n    from transformers import TrOCRProcessor\n    from PIL import\
+          \ Image\n\n    # Download test image from S3\n    s3_client = boto3.client(\n\
+          \        \"s3\",\n        endpoint_url=s3_endpoint,\n        aws_access_key_id=s3_access_key,\n\
+          \        aws_secret_access_key=s3_secret_key,\n        verify=False,\n \
+          \   )\n    s3_client.download_file(s3_bucket, \"pipelines/test-images/photo.jpg\"\
+          , \"/tmp/test_image.jpg\")\n    print(\"Downloaded test image from S3\"\
+          )\n\n    # Download model from S3\n    working_folder = \"/tmp/model/\"\n\
+          \    os.makedirs(working_folder, exist_ok=True)\n\n    session = boto3.session.Session(\n\
+          \        aws_access_key_id=s3_access_key,\n        aws_secret_access_key=s3_secret_key,\n\
+          \    )\n    s3_resource = session.resource(\n        \"s3\",\n        config=botocore.client.Config(signature_version=\"\
+          s3v4\"),\n        endpoint_url=s3_endpoint,\n        region_name=\"us-east-1\"\
+          ,\n        verify=False,\n    )\n    bucket = s3_resource.Bucket(s3_bucket)\n\
+          \    s3_client = boto3.client(\n        \"s3\",\n        endpoint_url=s3_endpoint,\n\
+          \        aws_access_key_id=s3_access_key,\n        aws_secret_access_key=s3_secret_key,\n\
+          \        verify=False,\n    )\n\n    for obj in bucket.objects.filter(Prefix=s3_folder):\n\
+          \        file_name = obj.key.split(\"/\")[-1]\n        if not file_name:\n\
+          \            continue\n        local_path = os.path.join(working_folder,\
+          \ file_name)\n        print(f\"Downloading {obj.key} -> {local_path}\")\n\
+          \        s3_client.download_file(s3_bucket, obj.key, local_path)\n\n   \
+          \ # Pre-processing\n    image = Image.open(\"/tmp/test_image.jpg\").convert(\"\
+          RGB\")\n    processor = TrOCRProcessor.from_pretrained(working_folder)\n\
+          \    pixel_values = processor(images=image, return_tensors=\"np\").pixel_values\n\
+          \    batch_size = pixel_values.shape[0]\n\n    # Load ONNX model\n    model_path\
+          \ = os.path.join(working_folder, \"model.onnx\")\n    ort_session = ort.InferenceSession(model_path)\n\
+          \n    # Inference\n    start_token_id = 2\n    eos_token_id = 2\n    max_length\
+          \ = 10\n    generated_sequence = np.full((batch_size, 1), start_token_id,\
+          \ dtype=np.int64)\n\n    for step in range(max_length):\n        outputs\
+          \ = ort_session.run(\n            None,\n            {\n               \
+          \ \"pixel_values\": pixel_values,\n                \"decoder_input_ids\"\
+          : generated_sequence,\n            },\n        )\n        next_token_logits\
+          \ = outputs[0][:, -1, :]\n        next_token_id = np.argmax(next_token_logits,\
+          \ axis=-1).reshape(\n            (batch_size, 1)\n        )\n        generated_sequence\
+          \ = np.concatenate(\n            [generated_sequence, next_token_id], axis=1\n\
+          \        )\n        if np.any(next_token_id == eos_token_id):\n        \
+          \    break\n\n    # Post-processing\n    generated_text = processor.batch_decode(\n\
+          \        generated_sequence, skip_special_tokens=True\n    )[0]\n    print(f\"\
+          >>> OCR Result <<<: {generated_text}\")\n    return generated_text\n\n"
+        image: registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:8712328f7c4aa611500daf3736a53405cac8a23a97721c37745a9fb9d8cf321d
+    exec-upload-to-s3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - upload_to_s3
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location --index-url https://pypi.org/simple/\
+          \ --trusted-host https://pypi.org/simple/ 'boto3==1.42.83'  &&  python3\
+          \ -m pip install --quiet --no-warn-script-location --index-url https://pypi.org/simple/\
+          \ --trusted-host https://pypi.org/simple/ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef upload_to_s3(\n    model_input: Input[Artifact],\n    s3_endpoint:\
+          \ str,\n    s3_bucket: str,\n    s3_access_key: str,\n    s3_secret_key:\
+          \ str,\n    s3_folder: str = \"pipelines/ocr-model/\",\n):\n    \"\"\"Upload\
+          \ ONNX model files to S3.\"\"\"\n    import os\n    import boto3\n    import\
+          \ botocore\n\n    session = boto3.session.Session(\n        aws_access_key_id=s3_access_key,\n\
+          \        aws_secret_access_key=s3_secret_key,\n    )\n    s3_resource =\
+          \ session.resource(\n        \"s3\",\n        config=botocore.client.Config(signature_version=\"\
+          s3v4\"),\n        endpoint_url=s3_endpoint,\n        region_name=\"us-east-1\"\
+          ,\n        verify=False,\n    )\n    bucket = s3_resource.Bucket(s3_bucket)\n\
+          \n    local_dir = model_input.path\n    for root, dirs, files in os.walk(local_dir):\n\
+          \        for filename in files:\n            file_path = os.path.join(root,\
+          \ filename)\n            relative_path = os.path.relpath(file_path, local_dir)\n\
+          \            s3_key = os.path.join(s3_folder, relative_path)\n         \
+          \   print(f\"Uploading {file_path} -> {s3_key}\")\n            bucket.upload_file(file_path,\
+          \ s3_key)\n\n    print(\"Upload complete.\")\n\n"
+        image: registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:8712328f7c4aa611500daf3736a53405cac8a23a97721c37745a9fb9d8cf321d
+pipelineInfo:
+  description: Export TrOCR to ONNX, upload to S3, run inference
+  name: ocr-pipeline
+root:
+  dag:
+    tasks:
+      export-model-to-onnx:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-export-model-to-onnx
+        taskInfo:
+          name: export-model-to-onnx
+      run-inference-from-s3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-run-inference-from-s3
+        dependentTasks:
+        - upload-to-s3
+        inputs:
+          parameters:
+            s3_access_key:
+              componentInputParameter: s3_access_key
+            s3_bucket:
+              componentInputParameter: s3_bucket
+            s3_endpoint:
+              componentInputParameter: s3_endpoint
+            s3_secret_key:
+              componentInputParameter: s3_secret_key
+        taskInfo:
+          name: run-inference-from-s3
+      upload-to-s3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-upload-to-s3
+        dependentTasks:
+        - export-model-to-onnx
+        inputs:
+          artifacts:
+            model_input:
+              taskOutputArtifact:
+                outputArtifactKey: model_output
+                producerTask: export-model-to-onnx
+          parameters:
+            s3_access_key:
+              componentInputParameter: s3_access_key
+            s3_bucket:
+              componentInputParameter: s3_bucket
+            s3_endpoint:
+              componentInputParameter: s3_endpoint
+            s3_secret_key:
+              componentInputParameter: s3_secret_key
+        taskInfo:
+          name: upload-to-s3
+  inputDefinitions:
+    parameters:
+      s3_access_key:
+        defaultValue: minio
+        isOptional: true
+        parameterType: STRING
+      s3_bucket:
+        defaultValue: ocr-demo
+        isOptional: true
+        parameterType: STRING
+      s3_endpoint:
+        defaultValue: https://minio-s3-minio.apps.cluster-f44gq.f44gq.sandbox358.opentlc.com
+        isOptional: true
+        parameterType: STRING
+      s3_secret_key:
+        defaultValue: minio123
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.1
